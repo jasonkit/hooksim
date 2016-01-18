@@ -1,0 +1,26 @@
+[
+  {
+    "user": "jasonkit",
+    "token": "c00433c116e7704a0d32580954fb0bfd3a2471ae",
+    "hooks": [
+      {
+        "repo": "misc",
+        "events": ["*"],
+        "url": "http://jasonkit.duckdns.org:9000/hookTester",
+        "secret": "test1234"
+      }  
+    ]
+  },
+  {
+    "user": "jason-kit",
+    "token": "ab7f5c00125d278b848cac05dac1901b9f523900",
+    "hooks": [
+      {
+        "repo": "test",
+        "events": ["*"],
+        "url": "http://jasonkit.duckdns.org:9000/hookTester",
+        "secret": "test1234"
+      }  
+    ]
+  }
+]

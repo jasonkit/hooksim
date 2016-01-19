@@ -14,6 +14,11 @@ import (
 	"github.com/satori/go.uuid"
 )
 
+type URLSecretPair struct {
+	URL    string
+	Secret string
+}
+
 type IssueActorPair struct {
 	Issue []byte
 	Actor []byte
@@ -66,41 +71,44 @@ func getRepoContent(owner, repo string, client *http.Client) string {
 
 // TriggerIssueRenamedWebHook makes POST request to the end-point specified in the config file
 func TriggerIssueRenamedWebHook(owner, repo string, renamedIssues []IssueActorPair, queryClient *http.Client) {
-	url, secret := getWebHookURL(owner, repo, "issues")
-	if url == "" {
+	pairs := getWebHookURL(owner, repo, "issues")
+	if len(pairs) == 0 {
 		return
 	}
 
-	for _, renamedIssue := range renamedIssues {
-		payload := fmt.Sprintf("{\"action\":\"updated\",\"issue\":%s,\"repository\":%s,\"sender\":%s}",
-			string(renamedIssue.Issue),
-			getRepoContent(owner, repo, queryClient),
-			string(renamedIssue.Actor))
+	for _, pair := range pairs {
 
-		client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
-		req, err := http.NewRequest("POST", url, bytes.NewReader([]byte(payload)))
-		if err != nil {
-			log.Printf("Error in creating POST request: %v\n", err)
-		}
+		for _, renamedIssue := range renamedIssues {
+			payload := fmt.Sprintf("{\"action\":\"updated\",\"issue\":%s,\"repository\":%s,\"sender\":%s}",
+				string(renamedIssue.Issue),
+				getRepoContent(owner, repo, queryClient),
+				string(renamedIssue.Actor))
 
-		req.Header.Add("User-Agent", "hooksim")
-		req.Header.Add("Content-Type", "application/json")
-		req.Header.Add("Accept", "*/*")
-		req.Header.Add("X-Github-Event", "issues")
-		req.Header.Add("X-Github-Delivery", uuid.NewV4().String())
-		if secret != "" {
-			mac := hmac.New(sha1.New, []byte(secret))
-			mac.Write([]byte(payload))
-			req.Header.Add("X-Hub-Signature", fmt.Sprintf("sha1=%x", mac.Sum(nil)))
-		}
+			client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
+			req, err := http.NewRequest("POST", pair.URL, bytes.NewReader([]byte(payload)))
+			if err != nil {
+				log.Printf("Error in creating POST request: %v\n", err)
+			}
 
-		resp, err := client.Do(req)
-		if err != nil {
-			log.Printf("Error in making webhook call: %v\n", err)
-		}
+			req.Header.Add("User-Agent", "hooksim")
+			req.Header.Add("Content-Type", "application/json")
+			req.Header.Add("Accept", "*/*")
+			req.Header.Add("X-Github-Event", "issues")
+			req.Header.Add("X-Github-Delivery", uuid.NewV4().String())
+			if pair.Secret != "" {
+				mac := hmac.New(sha1.New, []byte(pair.Secret))
+				mac.Write([]byte(payload))
+				req.Header.Add("X-Hub-Signature", fmt.Sprintf("sha1=%x", mac.Sum(nil)))
+			}
 
-		if resp.Body != nil {
-			resp.Body.Close()
+			resp, err := client.Do(req)
+			if err != nil {
+				log.Printf("Error in making webhook call: %v\n", err)
+			}
+
+			if resp.Body != nil {
+				resp.Body.Close()
+			}
 		}
 	}
 }

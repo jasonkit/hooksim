@@ -43,7 +43,9 @@ func getRepoNameAndOwner(payload []byte) (repoName, owner string, err error) {
 
 // getWebHookURL return the target system's webhook end-point and its secret key
 // specified in the config file.
-func getWebHookURL(owner, repo, event string) (string, string) {
+func getWebHookURL(owner, repo, event string) []URLSecretPair {
+	var pairs []URLSecretPair
+
 	for _, acct := range config.Accounts {
 		if acct.User != owner {
 			continue
@@ -55,17 +57,19 @@ func getWebHookURL(owner, repo, event string) (string, string) {
 			}
 
 			if len(hook.Events) == 1 && hook.Events[0] == "*" {
-				return hook.URL, hook.Secret
+				pairs = append(pairs, URLSecretPair{URL: hook.URL, Secret: hook.Secret})
+				continue
 			}
 
 			for _, e := range hook.Events {
 				if e == event {
-					return hook.URL, hook.Secret
+					pairs = append(pairs, URLSecretPair{URL: hook.URL, Secret: hook.Secret})
+					break
 				}
 			}
 		}
 	}
-	return "", ""
+	return pairs
 }
 
 // handleHook handles the webhook calls sent from github, it will redirect this
@@ -86,35 +90,37 @@ func handleHook(w http.ResponseWriter, r *http.Request) {
 
 	event := r.Header.Get("X-Github-Event")
 
-	url, _ := getWebHookURL(owner, repo, event)
-	if url == "" {
+	pairs := getWebHookURL(owner, repo, event)
+	if len(pairs) == 0 {
 		return
 	}
 
-	client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
-	req, err := http.NewRequest("POST", url, bytes.NewReader(payload))
-	if err != nil {
-		log.Printf("Error in creating POST request: %v\n", err)
-	}
+	for _, pair := range pairs {
+		client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
+		req, err := http.NewRequest("POST", pair.URL, bytes.NewReader(payload))
+		if err != nil {
+			log.Printf("Error in creating POST request: %v\n", err)
+		}
 
-	req.Header.Add("User-Agent", r.Header.Get("User-Agent"))
-	req.Header.Add("Content-Type", r.Header.Get("Content-Type"))
-	req.Header.Add("Accept", r.Header.Get("Accept"))
-	req.Header.Add("X-Github-Event", event)
-	req.Header.Add("X-Github-Delivery", r.Header.Get("X-Github-Delivery"))
+		req.Header.Add("User-Agent", r.Header.Get("User-Agent"))
+		req.Header.Add("Content-Type", r.Header.Get("Content-Type"))
+		req.Header.Add("Accept", r.Header.Get("Accept"))
+		req.Header.Add("X-Github-Event", event)
+		req.Header.Add("X-Github-Delivery", r.Header.Get("X-Github-Delivery"))
 
-	if signature := r.Header.Get("X-Hub-Signature"); signature != "" {
-		req.Header.Add("X-Hub-Signature", signature)
-	}
+		if signature := r.Header.Get("X-Hub-Signature"); signature != "" {
+			req.Header.Add("X-Hub-Signature", signature)
+		}
 
-	fmt.Printf("Redirecting Webhook call.\n")
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("Error in making webhook call: %v\n", err)
-	}
+		fmt.Printf("Redirecting Webhook call.\n")
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("Error in making webhook call: %v\n", err)
+		}
 
-	if resp.Body != nil {
-		resp.Body.Close()
+		if resp.Body != nil {
+			resp.Body.Close()
+		}
 	}
 }
 

@@ -29,13 +29,18 @@ type Poller struct {
 	Repos    map[string]map[string]LastAccess
 	NumRepo  int
 	Interval time.Duration
+
+	StopReqCh  chan bool
+	StopDoneCh chan bool
 }
 
 func New(interval int) *Poller {
 	poller := &Poller{
-		Clients:  make(map[string]*http.Client),
-		Repos:    make(map[string]map[string]LastAccess),
-		Interval: time.Duration(interval) * time.Second,
+		Clients:    make(map[string]*http.Client),
+		Repos:      make(map[string]map[string]LastAccess),
+		Interval:   time.Duration(interval) * time.Second,
+		StopReqCh:  make(chan bool),
+		StopDoneCh: make(chan bool),
 	}
 
 	for _, acct := range config.Accounts {
@@ -52,18 +57,32 @@ func New(interval int) *Poller {
 	return poller
 }
 
+func (p *Poller) Stop() {
+	p.StopReqCh <- true
+}
+
 func (p *Poller) Run() {
 	delay := p.Interval / time.Duration(p.NumRepo)
+
+	defer func() {
+		p.StopDoneCh <- true
+	}()
+
 	for {
 		for owner, v := range p.Repos {
 			for repo := range v {
-				if pairs := p.pollRepo(owner, repo); len(pairs) > 0 {
-					webhook.TriggerIssueRenamedWebHook(owner, repo, pairs, p.Clients[owner])
+				select {
+				case <-p.StopReqCh:
+					return
+				case <-time.After(delay):
+					if pairs := p.pollRepo(owner, repo); len(pairs) > 0 {
+						webhook.TriggerIssueRenamedWebHook(owner, repo, pairs, p.Clients[owner])
+					}
 				}
-				time.Sleep(delay)
 			}
 		}
 	}
+
 }
 
 func (p *Poller) pollRepo(owner, repo string) []webhook.IssueActorPair {

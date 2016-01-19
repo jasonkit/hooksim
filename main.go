@@ -47,7 +47,14 @@ func main() {
 		switch sig.String() {
 		case "interrupt":
 			fmt.Printf("shutting down...\n")
+
+			webhookStopCh := server.StopChan()
 			server.Stop(5 * time.Second)
+			<-webhookStopCh
+
+			p.Stop()
+			<-p.StopDoneCh
+
 			fmt.Printf("done\n")
 			return
 		}

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"hooksim/config"
+	"hooksim/poller"
 	"hooksim/webhook"
 	"os"
 	"os/signal"
@@ -17,7 +18,9 @@ func main() {
 	}
 
 	server := webhook.Server(9000)
+	p := poller.New(5)
 
+	go p.Run()
 	go server.ListenAndServe()
 
 	signalCh := make(chan os.Signal)

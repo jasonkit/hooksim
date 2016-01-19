@@ -57,8 +57,8 @@ func (p *Poller) Run() {
 	for {
 		for owner, v := range p.Repos {
 			for repo := range v {
-				if renamedIssue := p.pollRepo(owner, repo); renamedIssue != nil {
-					//webhook.TriggerIssueRenamedWebHook(owner, repo, renamedIssue, p.Clients[owner])
+				if renamedIssue, actor := p.pollRepo(owner, repo); renamedIssue != nil {
+					//webhook.TriggerIssueRenamedWebHook(owner, repo, renamedIssue,actor, p.Clients[owner])
 				}
 				time.Sleep(delay)
 			}
@@ -66,13 +66,13 @@ func (p *Poller) Run() {
 	}
 }
 
-func (p *Poller) pollRepo(owner, repo string) []byte {
+func (p *Poller) pollRepo(owner, repo string) ([]byte, []byte) {
 	fmt.Printf("polling %s/%s...\n", owner, repo)
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/repos/%s/%s/issues/events", apiUrl, owner, repo), nil)
 	if err != nil {
 		log.Printf("Error in creating GET request:%v\n, err")
-		return nil
+		return nil, nil
 	}
 
 	if p.Repos[owner][repo].ETag != "" {
@@ -83,25 +83,25 @@ func (p *Poller) pollRepo(owner, repo string) []byte {
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Error in get issue events:%v\n, err")
-		return nil
+		return nil, nil
 	}
 
 	if resp.StatusCode == 304 {
 		if resp.Body != nil {
 			resp.Body.Close()
 		}
-		return nil
+		return nil, nil
 	}
 
 	page := 1
 	etag := resp.Header.Get("ETag")
 	hasNewRenamedEvent := false
-	var newRenamedIssue []byte
+	var newRenamedIssue, eventActor []byte
 	var latestTs uint64
 	var maxPage int
 
 	for {
-		foundLastAccess, hasRenamedEvent, latestPageTs, renamedIssue, err := p.parseResponse(owner, repo, resp)
+		foundLastAccess, hasRenamedEvent, latestPageTs, renamedIssue, actor, err := p.parseResponse(owner, repo, resp)
 
 		if maxPage == 0 && resp.Header.Get("Link") != "" {
 			maxPage = getMaxPage(resp.Header.Get("Link"))
@@ -113,7 +113,7 @@ func (p *Poller) pollRepo(owner, repo string) []byte {
 
 		if err != nil {
 			log.Printf("Error in parsing response: %v", err)
-			return nil
+			return nil, nil
 		}
 
 		// As we are searching from newest to oldest, whenever hasRenamedEvent is true,
@@ -122,6 +122,7 @@ func (p *Poller) pollRepo(owner, repo string) []byte {
 			if hasRenamedEvent {
 				hasNewRenamedEvent = true
 				newRenamedIssue = renamedIssue
+				eventActor = actor
 			}
 			break
 		} else {
@@ -137,12 +138,12 @@ func (p *Poller) pollRepo(owner, repo string) []byte {
 			req, err = http.NewRequest("GET", fmt.Sprintf("%s/repos/%s/%s/issues/events?page=%d", apiUrl, owner, repo, page), nil)
 			if err != nil {
 				log.Printf("Error in creating GET request:%v\n, err")
-				return nil
+				return nil, nil
 			}
 			resp, err = client.Do(req)
 			if err != nil {
 				log.Printf("Error in get issue events:%v\n, err")
-				return nil
+				return nil, nil
 			}
 		}
 	}
@@ -155,29 +156,30 @@ func (p *Poller) pollRepo(owner, repo string) []byte {
 		fmt.Printf("New Renamed Event!!\n")
 	}
 
-	return newRenamedIssue
+	return newRenamedIssue, eventActor
 }
 
-func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, bool, uint64, []byte, error) {
+func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, bool, uint64, []byte, []byte, error) {
 	content, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return false, false, 0, nil, err
+		return false, false, 0, nil, nil, err
 	}
 
 	var result []json.RawMessage
 	if err := json.Unmarshal(content, &result); err != nil {
-		return false, false, 0, nil, err
+		return false, false, 0, nil, nil, err
 	}
 
 	var latestTs uint64
 	lastTs := p.Repos[owner][repo].Timestamp
 	foundLastAccess := false
 	hasRenamedEvent := false
-	var renamedIssue []byte
+	var renamedIssue, actor []byte
+
 	for _, v := range result {
 		var event map[string]json.RawMessage
 		if err := json.Unmarshal(v, &event); err != nil {
-			return false, false, 0, nil, err
+			return false, false, 0, nil, nil, err
 		}
 
 		var tsStr, eventType string
@@ -194,6 +196,7 @@ func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, b
 		if eventType == "renamed" {
 			hasRenamedEvent = true
 			renamedIssue = []byte(event["issue"])
+			actor = []byte(event["actor"])
 		}
 
 		if lastTs > tsUint64 {
@@ -202,7 +205,7 @@ func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, b
 		}
 	}
 
-	return foundLastAccess, hasRenamedEvent, latestTs, renamedIssue, nil
+	return foundLastAccess, hasRenamedEvent, latestTs, renamedIssue, actor, nil
 }
 
 func getMaxPage(link string) int {

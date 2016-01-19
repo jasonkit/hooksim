@@ -27,7 +27,7 @@ var (
 		"issue_comment_url", "contents_url", "compare_url", "merges_url", "archive_url", "downloads_url", "issues_url", "pulls_url",
 		"milestones_url", "notifications_url", "labels_url", "releases_url", "created_at", "updated_at", "pushed_at", "git_url", "ssh_url",
 		"clone_url", "svn_url", "homepage", "size", "stargazers_count", "watchers_count", "language", "has_issues", "has_downloads",
-		"has_wiki", "has_wiki", "forks_count", "mirror_url", "open_issues_count", "forks", "open_issues", "watchers", "default_branch"}
+		"has_wiki", "has_pages", "forks_count", "mirror_url", "open_issues_count", "forks", "open_issues", "watchers", "default_branch"}
 )
 
 func getRepoContent(owner, repo string, client *http.Client) string {

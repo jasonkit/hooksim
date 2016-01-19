@@ -15,7 +15,11 @@ func parseFlag() (int, int, string) {
 	port := flag.Int("p", 9000, "Listening port")
 	interval := flag.Int("i", 5, "Polling interval for all repositories")
 	conf := flag.String("c", "config.json", "Path to config file")
+	dataDir := flag.String("d", "./data", "Path to data directory")
 	flag.Parse()
+
+	config.DataDir = *dataDir
+
 	return *port, *interval, *conf
 }
 

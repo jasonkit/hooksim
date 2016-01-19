@@ -20,8 +20,8 @@ import (
 )
 
 type LastAccess struct {
-	ETag      string
-	Timestamp uint64
+	ETag    string
+	EventID uint64
 }
 
 type Poller struct {
@@ -95,19 +95,19 @@ func (p *Poller) pollRepo(owner, repo string) []webhook.IssueActorPair {
 
 	page := 1
 	etag := resp.Header.Get("ETag")
-	var latestTs uint64
+	var latestID uint64
 	var maxPage int
 	var pairs []webhook.IssueActorPair
 
 	for {
-		foundLastAccess, latestPageTs, pairsInPage, err := p.parseResponse(owner, repo, resp)
+		foundLastAccess, latestIDInPage, pairsInPage, err := p.parseResponse(owner, repo, resp)
 
 		if maxPage == 0 && resp.Header.Get("Link") != "" {
 			maxPage = getMaxPage(resp.Header.Get("Link"))
 		}
 
-		if latestPageTs > latestTs {
-			latestTs = latestPageTs
+		if latestIDInPage > latestID {
+			latestID = latestIDInPage
 		}
 
 		if err != nil {
@@ -115,7 +115,7 @@ func (p *Poller) pollRepo(owner, repo string) []webhook.IssueActorPair {
 			return nil
 		}
 
-		if foundLastAccess || p.Repos[owner][repo].Timestamp == 0 {
+		if foundLastAccess || p.Repos[owner][repo].EventID == 0 {
 			pairs = append(pairs, pairsInPage...)
 			break
 		} else {
@@ -141,8 +141,8 @@ func (p *Poller) pollRepo(owner, repo string) []webhook.IssueActorPair {
 		}
 	}
 
-	fmt.Printf("#### %v\n", latestTs)
-	a := LastAccess{ETag: etag, Timestamp: latestTs}
+	fmt.Printf("#### %v\n", latestID)
+	a := LastAccess{ETag: etag, EventID: latestID}
 	p.Repos[owner][repo] = a
 	storeLastAccess(owner, repo, a)
 
@@ -166,40 +166,39 @@ func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, u
 		return false, 0, nil, err
 	}
 
-	var latestTs uint64
-	lastTs := p.Repos[owner][repo].Timestamp
+	var latestID uint64
+	lastID := p.Repos[owner][repo].EventID
 	foundLastAccess := false
 
 	for _, v := range result {
-		var event map[string]json.RawMessage
+		var event map[string]interface{}
 		if err := json.Unmarshal(v, &event); err != nil {
 			return false, 0, nil, err
 		}
 
-		var tsStr, eventType string
-		json.Unmarshal(event["created_at"], &tsStr)
-		json.Unmarshal(event["event"], &eventType)
+		curID := uint64(event["id"].(float64))
+		eventType := event["event"].(string)
 
-		ts, _ := time.Parse(time.RFC3339, tsStr)
-		tsUint64 := uint64(ts.Unix())
+		if curID > latestID {
+			latestID = curID
+		}
 
-		if lastTs >= tsUint64 {
+		if lastID >= curID || lastID == 0 {
 			foundLastAccess = true
 			break
 		}
-		fmt.Printf(">>> created_at:%v/%v event:%v\n", tsUint64, lastTs, eventType)
-
-		if tsUint64 > latestTs {
-			latestTs = tsUint64
-		}
+		fmt.Printf(">>> id:%v/%v event:%v\n", curID, lastID, eventType)
 
 		if eventType == "renamed" {
+
+			var event map[string]json.RawMessage
+			json.Unmarshal(v, &event)
 			pairs = append(pairs, webhook.IssueActorPair{Issue: []byte(event["issue"]), Actor: []byte(event["actor"])})
 		}
 
 	}
 
-	return foundLastAccess, latestTs, pairs, nil
+	return foundLastAccess, latestID, pairs, nil
 }
 
 func getMaxPage(link string) int {
@@ -230,17 +229,17 @@ func restoreLastAccess(owner, repo string) LastAccess {
 	}
 	etag = strings.Trim(etag, "\n ")
 
-	tsStr, err := buf.ReadString('\n')
+	idStr, err := buf.ReadString('\n')
 	if err != nil {
 		return LastAccess{"", 0}
 	}
-	tsStr = strings.Trim(tsStr, "\n ")
-	ts, err := strconv.ParseUint(tsStr, 10, 64)
+	idStr = strings.Trim(idStr, "\n ")
+	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
 		return LastAccess{"", 0}
 	}
 
-	return LastAccess{etag, ts}
+	return LastAccess{etag, id}
 }
 
 func storeLastAccess(owner, repo string, a LastAccess) {
@@ -252,8 +251,7 @@ func storeLastAccess(owner, repo string, a LastAccess) {
 		return
 	}
 
-	content := fmt.Sprintf("%v\n%v\n", a.ETag, a.Timestamp)
-
+	content := fmt.Sprintf("%v\n%v\n", a.ETag, a.EventID)
 	err = ioutil.WriteFile(path.Join(config.DataDir, owner, repo), []byte(content), 0644)
 	if err != nil {
 		log.Printf(errFmt, err)

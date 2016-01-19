@@ -11,6 +11,7 @@ const (
 
 var (
 	DataDir = "./data"
+	Verbose = false
 )
 
 type Account struct {

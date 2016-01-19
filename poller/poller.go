@@ -98,7 +98,9 @@ func (p *Poller) Run() {
 // GET query which without "page" param will have If-None-Match in the request header so as to
 // speed up the query and reduce the comsumption of github API quota
 func (p *Poller) pollRepo(owner, repo string) []webhook.IssueActorPair {
-	fmt.Printf("polling %s/%s...\n", owner, repo)
+	if config.Verbose {
+		fmt.Printf("polling %s/%s...\n", owner, repo)
+	}
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/repos/%s/%s/issues/events", config.GithubAPIURL, owner, repo), nil)
 	if err != nil {
@@ -172,13 +174,14 @@ func (p *Poller) pollRepo(owner, repo string) []webhook.IssueActorPair {
 		}
 	}
 
-	fmt.Printf("#### %v\n", latestID)
 	a := LastAccess{ETag: etag, EventID: latestID}
 	p.Repos[owner][repo] = a
 	storeLastAccess(owner, repo, a)
 
-	if len(pairs) > 0 {
-		fmt.Printf("New Renamed Event!!\n")
+	if config.Verbose {
+		if len(pairs) > 0 {
+			fmt.Printf("New rename event detected.\n")
+		}
 	}
 
 	return pairs
@@ -222,10 +225,12 @@ func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, u
 			foundLastAccess = true
 			break
 		}
-		fmt.Printf(">>> id:%v/%v event:%v\n", curID, lastID, eventType)
+
+		if config.Verbose {
+			fmt.Printf("> curID:%v lastID:%v event:%v\n", curID, lastID, eventType)
+		}
 
 		if eventType == "renamed" {
-
 			var event map[string]json.RawMessage
 			json.Unmarshal(v, &event)
 			pairs = append(pairs, webhook.IssueActorPair{Issue: []byte(event["issue"]), Actor: []byte(event["actor"])})

@@ -112,7 +112,10 @@ func handleHook(w http.ResponseWriter, r *http.Request) {
 			req.Header.Add("X-Hub-Signature", signature)
 		}
 
-		fmt.Printf("Redirecting Webhook call.\n")
+		if config.Verbose {
+			fmt.Printf("Redirecting Webhook call.\n")
+		}
+
 		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("Error in making webhook call: %v\n", err)
@@ -133,10 +136,12 @@ func handleHookTester(w http.ResponseWriter, r *http.Request) {
 	}
 
 	content, _ := ioutil.ReadAll(r.Body)
-	fmt.Printf("[Body]\n%s\n", string(content))
+	if config.Verbose {
+		fmt.Printf("[Body]\n%s\n", string(content))
+	}
 	mac := hmac.New(sha1.New, []byte("test1234"))
 	mac.Write(content)
-	fmt.Printf("chksum:%x\n", mac.Sum(nil))
+	fmt.Printf("sha1 = %x\n", mac.Sum(nil))
 	r.Body.Close()
 }
 

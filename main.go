@@ -6,6 +6,7 @@ import (
 	"hooksim/config"
 	"hooksim/poller"
 	"hooksim/webhook"
+	"log"
 	"os"
 	"os/signal"
 	"time"
@@ -16,9 +17,11 @@ func parseFlag() (int, int, string) {
 	interval := flag.Int("i", 5, "Polling interval for all repositories")
 	conf := flag.String("c", "config.json", "Path to config file")
 	dataDir := flag.String("d", "./data", "Path to data directory")
+	verbose := flag.Bool("v", false, "Verbose")
 	flag.Parse()
 
 	config.DataDir = *dataDir
+	config.Verbose = *verbose
 
 	return *port, *interval, *conf
 }
@@ -29,7 +32,7 @@ func main() {
 
 	err := config.Load(conf)
 	if err != nil {
-		fmt.Printf("Error:%v\n", err)
+		log.Printf("Error:%v\n", err)
 		return
 	}
 

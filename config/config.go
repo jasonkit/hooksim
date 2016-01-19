@@ -28,6 +28,8 @@ type Hook struct {
 
 var Accounts []Account
 
+// Load takes the path to config file, read it and fill-in according to the
+// config file config.Accounts
 func Load(path string) error {
 	confInJSON, err := ioutil.ReadFile(path)
 

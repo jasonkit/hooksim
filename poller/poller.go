@@ -34,6 +34,9 @@ type Poller struct {
 	StopDoneCh chan bool
 }
 
+// New takes the polling interval in second and return a pointer to Poller
+// It will also load the data store in the path indicated in config.DataDir so that
+// the poller restore the ETag and last retrieved issue event id from its last query on each repo
 func New(interval int) *Poller {
 	poller := &Poller{
 		Clients:    make(map[string]*http.Client),
@@ -57,10 +60,12 @@ func New(interval int) *Poller {
 	return poller
 }
 
+// Stop will stop the poller task
 func (p *Poller) Stop() {
 	p.StopReqCh <- true
 }
 
+// Run will start the poller task, this call will block until Stop() is called
 func (p *Poller) Run() {
 	delay := p.Interval / time.Duration(p.NumRepo)
 
@@ -85,6 +90,13 @@ func (p *Poller) Run() {
 
 }
 
+// pollRepo makes query to /repos/:user/:repo/issues/events, scan for unread issue event
+// if there is unread "renamed" issue event, it will enqueue the correspond issue and actor
+// content pair to a queue, this queue will be output of this method. By exemine the length
+// of the queue, we can decide we should trigger webhook call or not.
+//
+// GET query which without "page" param will have If-None-Match in the request header so as to
+// speed up the query and reduce the comsumption of github API quota
 func (p *Poller) pollRepo(owner, repo string) []webhook.IssueActorPair {
 	fmt.Printf("polling %s/%s...\n", owner, repo)
 
@@ -172,6 +184,10 @@ func (p *Poller) pollRepo(owner, repo string) []webhook.IssueActorPair {
 	return pairs
 }
 
+// parseResponse is the helper function for pollRepo, it is used to scan for unread renamed issue
+// event and return the correspond issue and actor content pair
+// It will also indicated whether it is time to stop query the next page by comparing the event ID
+// with this stored one
 func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, uint64, []webhook.IssueActorPair, error) {
 	var pairs []webhook.IssueActorPair
 
@@ -220,6 +236,7 @@ func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, u
 	return foundLastAccess, latestID, pairs, nil
 }
 
+// getMaxPage parse the content of Link Header and extact the max page number
 func getMaxPage(link string) int {
 	lastPageURL, err := url.Parse(strings.Trim(strings.Split(strings.Split(link, ",")[1], ";")[0], " <>"))
 	if err != nil {
@@ -235,6 +252,7 @@ func getMaxPage(link string) int {
 	return maxPage
 }
 
+// restoreLastAccess load the ETag and latest seen issue event ID from local storage
 func restoreLastAccess(owner, repo string) LastAccess {
 	content, err := ioutil.ReadFile(path.Join(config.DataDir, owner, repo))
 	if err != nil {
@@ -261,6 +279,7 @@ func restoreLastAccess(owner, repo string) LastAccess {
 	return LastAccess{etag, id}
 }
 
+// storeLastAccess save the ETag and latest seen issue event ID to local storage
 func storeLastAccess(owner, repo string, a LastAccess) {
 	errFmt := "Error in storing last access infomation: %v\n"
 

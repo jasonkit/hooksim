@@ -15,6 +15,7 @@ import (
 	"github.com/tylerb/graceful"
 )
 
+// getRepoNameAndOwner extract the owner and repo name form the webhook payload sent from github
 func getRepoNameAndOwner(payload []byte) (repoName, owner string, err error) {
 	var event map[string]json.RawMessage
 	var repo map[string]json.RawMessage
@@ -40,6 +41,8 @@ func getRepoNameAndOwner(payload []byte) (repoName, owner string, err error) {
 	return fields[1], fields[0], err
 }
 
+// getWebHookURL return the target system's webhook end-point and its secret key
+// specified in the config file.
 func getWebHookURL(owner, repo, event string) (string, string) {
 	for _, acct := range config.Accounts {
 		if acct.User != owner {
@@ -65,6 +68,8 @@ func getWebHookURL(owner, repo, event string) (string, string) {
 	return "", ""
 }
 
+// handleHook handles the webhook calls sent from github, it will redirect this
+// webhook call to the target system if necessary (depend on the config file)
 func handleHook(w http.ResponseWriter, r *http.Request) {
 	payload, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -113,6 +118,7 @@ func handleHook(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleHookTester acts as a dummy target system end-point for testing
 func handleHookTester(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Receive WebHook Call:\n")
 	fmt.Printf("[Header]\n")
@@ -128,6 +134,7 @@ func handleHookTester(w http.ResponseWriter, r *http.Request) {
 	r.Body.Close()
 }
 
+// Server return the http server for handling the github webhook call
 func Server(port int) *graceful.Server {
 	mux := http.NewServeMux()
 

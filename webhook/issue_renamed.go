@@ -20,6 +20,7 @@ type IssueActorPair struct {
 }
 
 var (
+	// For constructing the repository json object with the same field order as github's output
 	repoFields = [...]string{"id", "name", "full_name", "owner", "private", "html_url", "description", "fork", "url", "forks_url",
 		"keys_url", "collaborators_url", "teams_url", "hooks_url", "issue_events_url", "events_url", "assignees_url",
 		"branches_url", "tags_url", "blobs_url", "git_tags_url", "git_refs_url", "trees_url", "statuses_url", "languages_url",
@@ -30,6 +31,7 @@ var (
 		"has_wiki", "has_pages", "forks_count", "mirror_url", "open_issues_count", "forks", "open_issues", "watchers", "default_branch"}
 )
 
+// getRepoContent composes the repo json object of the specified owner and repo
 func getRepoContent(owner, repo string, client *http.Client) string {
 	resp, err := client.Get(fmt.Sprintf("%s/repos/%s/%s", config.GithubAPIURL, owner, repo))
 	if err != nil {
@@ -62,6 +64,7 @@ func getRepoContent(owner, repo string, client *http.Client) string {
 	return output
 }
 
+// TriggerIssueRenamedWebHook makes POST request to the end-point specified in the config file
 func TriggerIssueRenamedWebHook(owner, repo string, renamedIssues []IssueActorPair, queryClient *http.Client) {
 	url, secret := getWebHookURL(owner, repo, "issues")
 	if url == "" {

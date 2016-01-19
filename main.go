@@ -11,18 +11,19 @@ import (
 	"time"
 )
 
-func parseFlag() (int, int) {
+func parseFlag() (int, int, string) {
 	port := flag.Int("p", 9000, "Listening port")
 	interval := flag.Int("i", 5, "Polling interval for all repositories")
+	conf := flag.String("c", "config.json", "Path to config file")
 	flag.Parse()
-	return *port, *interval
+	return *port, *interval, *conf
 }
 
 func main() {
 
-	port, interval := parseFlag()
+	port, interval, conf := parseFlag()
 
-	err := config.Load("./config.json")
+	err := config.Load(conf)
 	if err != nil {
 		fmt.Printf("Error:%v\n", err)
 		return

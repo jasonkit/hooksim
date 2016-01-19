@@ -2,6 +2,8 @@ package webhook
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"hooksim/config"
@@ -61,7 +63,7 @@ func getRepoContent(owner, repo string, client *http.Client) string {
 }
 
 func TriggerIssueRenamedWebHook(owner, repo string, renamedIssues []IssueActorPair, queryClient *http.Client) {
-	url := getWebHookURL(owner, repo, "issues")
+	url, secret := getWebHookURL(owner, repo, "issues")
 	if url == "" {
 		return
 	}
@@ -83,7 +85,11 @@ func TriggerIssueRenamedWebHook(owner, repo string, renamedIssues []IssueActorPa
 		req.Header.Add("Accept", "*/*")
 		req.Header.Add("X-Github-Event", "issues")
 		req.Header.Add("X-Github-Delivery", uuid.NewV4().String())
-		// TODO X-Hub-Signature
+		if secret != "" {
+			mac := hmac.New(sha1.New, []byte(secret))
+			mac.Write([]byte(payload))
+			req.Header.Add("X-Hub-Signature", fmt.Sprintf("sha1=%x", mac.Sum(nil)))
+		}
 
 		resp, err := client.Do(req)
 		if err != nil {

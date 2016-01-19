@@ -40,7 +40,7 @@ func getRepoNameAndOwner(payload []byte) (repoName, owner string, err error) {
 	return fields[1], fields[0], err
 }
 
-func getWebHookURL(owner, repo, event string) string {
+func getWebHookURL(owner, repo, event string) (string, string) {
 	for _, acct := range config.Accounts {
 		if acct.User != owner {
 			continue
@@ -52,17 +52,17 @@ func getWebHookURL(owner, repo, event string) string {
 			}
 
 			if len(hook.Events) == 1 && hook.Events[0] == "*" {
-				return hook.URL
+				return hook.URL, hook.Secret
 			}
 
 			for _, e := range hook.Events {
 				if e == event {
-					return hook.URL
+					return hook.URL, hook.Secret
 				}
 			}
 		}
 	}
-	return ""
+	return "", ""
 }
 
 func handleHook(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +81,7 @@ func handleHook(w http.ResponseWriter, r *http.Request) {
 
 	event := r.Header.Get("X-Github-Event")
 
-	url := getWebHookURL(owner, repo, event)
+	url, _ := getWebHookURL(owner, repo, event)
 	if url == "" {
 		return
 	}
@@ -89,7 +89,7 @@ func handleHook(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
 	req, err := http.NewRequest("POST", url, bytes.NewReader(payload))
 	if err != nil {
-		log.Printf("Error in create POST request: %v\n", err)
+		log.Printf("Error in creating POST request: %v\n", err)
 	}
 
 	req.Header.Add("User-Agent", r.Header.Get("User-Agent"))
@@ -121,7 +121,7 @@ func handleHookTester(w http.ResponseWriter, r *http.Request) {
 	}
 
 	content, _ := ioutil.ReadAll(r.Body)
-	//fmt.Printf("[Body]\n%s\n", string(content))
+	fmt.Printf("[Body]\n%s\n", string(content))
 	mac := hmac.New(sha1.New, []byte("test1234"))
 	mac.Write(content)
 	fmt.Printf("chksum:%x\n", mac.Sum(nil))

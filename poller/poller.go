@@ -16,10 +16,6 @@ import (
 	"golang.org/x/oauth2"
 )
 
-const (
-	apiUrl = "https://api.github.com"
-)
-
 type LastAccess struct {
 	ETag      string
 	Timestamp uint64
@@ -70,7 +66,7 @@ func (p *Poller) Run() {
 func (p *Poller) pollRepo(owner, repo string) ([]byte, []byte) {
 	fmt.Printf("polling %s/%s...\n", owner, repo)
 
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/repos/%s/%s/issues/events", apiUrl, owner, repo), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/repos/%s/%s/issues/events", config.GithubAPIURL, owner, repo), nil)
 	if err != nil {
 		log.Printf("Error in creating GET request:%v\n, err")
 		return nil, nil
@@ -136,7 +132,7 @@ func (p *Poller) pollRepo(owner, repo string) ([]byte, []byte) {
 				break
 			}
 
-			req, err = http.NewRequest("GET", fmt.Sprintf("%s/repos/%s/%s/issues/events?page=%d", apiUrl, owner, repo, page), nil)
+			req, err = http.NewRequest("GET", fmt.Sprintf("%s/repos/%s/%s/issues/events?page=%d", config.GithubAPIURL, owner, repo, page), nil)
 			if err != nil {
 				log.Printf("Error in creating GET request:%v\n, err")
 				return nil, nil

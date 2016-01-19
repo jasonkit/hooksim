@@ -4,15 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"hooksim/config"
 	"io/ioutil"
 	"log"
 	"net/http"
 
 	"github.com/satori/go.uuid"
-)
-
-const (
-	apiUrl = "https://api.github.com"
 )
 
 var (
@@ -27,7 +24,7 @@ var (
 )
 
 func getRepoContent(owner, repo string, client *http.Client) string {
-	resp, err := client.Get(fmt.Sprintf("%s/repos/%s/%s", apiUrl, owner, repo))
+	resp, err := client.Get(fmt.Sprintf("%s/repos/%s/%s", config.GithubAPIURL, owner, repo))
 	if err != nil {
 		log.Printf("Error in getting repo content: %v\n", err)
 		return "{}"

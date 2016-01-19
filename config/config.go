@@ -5,6 +5,14 @@ import (
 	"io/ioutil"
 )
 
+const (
+	GithubAPIURL = "https://api.github.com"
+)
+
+var (
+	DataDir = "./data"
+)
+
 type Account struct {
 	User  string
 	Token string

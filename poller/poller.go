@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hooksim/config"
+	"hooksim/types"
 	"hooksim/webhook"
 	"io/ioutil"
 	"log"
@@ -97,7 +98,7 @@ func (p *Poller) Run() {
 //
 // GET query which without "page" param will have If-None-Match in the request header so as to
 // speed up the query and reduce the comsumption of github API quota
-func (p *Poller) pollRepo(owner, repo string) []webhook.IssueActorPair {
+func (p *Poller) pollRepo(owner, repo string) []types.IssueActorPair {
 	if config.Verbose {
 		fmt.Printf("polling %s/%s...\n", owner, repo)
 	}
@@ -130,7 +131,7 @@ func (p *Poller) pollRepo(owner, repo string) []webhook.IssueActorPair {
 	etag := resp.Header.Get("ETag")
 	var latestID uint64
 	var maxPage int
-	var pairs []webhook.IssueActorPair
+	var pairs []types.IssueActorPair
 
 	for {
 		foundLastAccess, latestIDInPage, pairsInPage, err := p.parseResponse(owner, repo, resp)
@@ -191,8 +192,8 @@ func (p *Poller) pollRepo(owner, repo string) []webhook.IssueActorPair {
 // event and return the correspond issue and actor content pair
 // It will also indicated whether it is time to stop query the next page by comparing the event ID
 // with this stored one
-func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, uint64, []webhook.IssueActorPair, error) {
-	var pairs []webhook.IssueActorPair
+func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, uint64, []types.IssueActorPair, error) {
+	var pairs []types.IssueActorPair
 
 	content, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -233,7 +234,7 @@ func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, u
 		if eventType == "renamed" {
 			var event map[string]json.RawMessage
 			json.Unmarshal(v, &event)
-			pairs = append(pairs, webhook.IssueActorPair{Issue: []byte(event["issue"]), Actor: []byte(event["actor"])})
+			pairs = append(pairs, types.IssueActorPair{Issue: []byte(event["issue"]), Actor: []byte(event["actor"])})
 		}
 
 	}

@@ -7,22 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"hooksim/config"
+	"hooksim/types"
 	"io/ioutil"
 	"log"
 	"net/http"
 
 	"github.com/satori/go.uuid"
 )
-
-type URLSecretPair struct {
-	URL    string
-	Secret string
-}
-
-type IssueActorPair struct {
-	Issue []byte
-	Actor []byte
-}
 
 var (
 	// For constructing the repository json object with the same field order as github's output
@@ -70,7 +61,7 @@ func getRepoContent(owner, repo string, client *http.Client) string {
 }
 
 // TriggerIssueRenamedWebHook makes POST request to the end-point specified in the config file
-func TriggerIssueRenamedWebHook(owner, repo string, renamedIssues []IssueActorPair, queryClient *http.Client) {
+func TriggerIssueRenamedWebHook(owner, repo string, renamedIssues []types.IssueActorPair, queryClient *http.Client) {
 	pairs := getWebHookURL(owner, repo, "issues")
 	if len(pairs) == 0 {
 		return

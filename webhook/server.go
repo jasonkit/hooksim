@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hooksim/config"
+	"hooksim/types"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -43,8 +44,8 @@ func getRepoNameAndOwner(payload []byte) (repoName, owner string, err error) {
 
 // getWebHookURL return the target system's webhook end-point and its secret key
 // specified in the config file.
-func getWebHookURL(owner, repo, event string) []URLSecretPair {
-	var pairs []URLSecretPair
+func getWebHookURL(owner, repo, event string) []types.URLSecretPair {
+	var pairs []types.URLSecretPair
 
 	for _, acct := range config.Accounts {
 		if acct.User != owner {
@@ -57,13 +58,13 @@ func getWebHookURL(owner, repo, event string) []URLSecretPair {
 			}
 
 			if len(hook.Events) == 1 && hook.Events[0] == "*" {
-				pairs = append(pairs, URLSecretPair{URL: hook.URL, Secret: hook.Secret})
+				pairs = append(pairs, types.URLSecretPair{URL: hook.URL, Secret: hook.Secret})
 				continue
 			}
 
 			for _, e := range hook.Events {
 				if e == event {
-					pairs = append(pairs, URLSecretPair{URL: hook.URL, Secret: hook.Secret})
+					pairs = append(pairs, types.URLSecretPair{URL: hook.URL, Secret: hook.Secret})
 					break
 				}
 			}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"hooksim/config"
 	"hooksim/poller"
@@ -10,15 +11,25 @@ import (
 	"time"
 )
 
+func parseFlag() (int, int) {
+	port := flag.Int("p", 9000, "Listening port")
+	interval := flag.Int("i", 5, "Polling interval for all repositories")
+	flag.Parse()
+	return *port, *interval
+}
+
 func main() {
+
+	port, interval := parseFlag()
+
 	err := config.Load("./config.json")
 	if err != nil {
 		fmt.Printf("Error:%v\n", err)
 		return
 	}
 
-	server := webhook.Server(9000)
-	p := poller.New(5)
+	server := webhook.Server(port)
+	p := poller.New(interval)
 
 	go p.Run()
 	go server.ListenAndServe()

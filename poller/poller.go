@@ -1,6 +1,7 @@
 package poller
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"hooksim/config"
@@ -9,6 +10,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -54,8 +57,8 @@ func (p *Poller) Run() {
 	for {
 		for owner, v := range p.Repos {
 			for repo := range v {
-				if renamedIssue, actor := p.pollRepo(owner, repo); renamedIssue != nil {
-					webhook.TriggerIssueRenamedWebHook(owner, repo, renamedIssue, actor, p.Clients[owner])
+				if pairs := p.pollRepo(owner, repo); len(pairs) > 0 {
+					webhook.TriggerIssueRenamedWebHook(owner, repo, pairs, p.Clients[owner])
 				}
 				time.Sleep(delay)
 			}
@@ -63,13 +66,13 @@ func (p *Poller) Run() {
 	}
 }
 
-func (p *Poller) pollRepo(owner, repo string) ([]byte, []byte) {
+func (p *Poller) pollRepo(owner, repo string) []webhook.IssueActorPair {
 	fmt.Printf("polling %s/%s...\n", owner, repo)
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/repos/%s/%s/issues/events", config.GithubAPIURL, owner, repo), nil)
 	if err != nil {
 		log.Printf("Error in creating GET request:%v\n, err")
-		return nil, nil
+		return nil
 	}
 
 	if p.Repos[owner][repo].ETag != "" {
@@ -80,25 +83,24 @@ func (p *Poller) pollRepo(owner, repo string) ([]byte, []byte) {
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Error in get issue events:%v\n, err")
-		return nil, nil
+		return nil
 	}
 
 	if resp.StatusCode == 304 {
 		if resp.Body != nil {
 			resp.Body.Close()
 		}
-		return nil, nil
+		return nil
 	}
 
 	page := 1
 	etag := resp.Header.Get("ETag")
-	hasNewRenamedEvent := false
-	var newRenamedIssue, eventActor []byte
 	var latestTs uint64
 	var maxPage int
+	var pairs []webhook.IssueActorPair
 
 	for {
-		foundLastAccess, hasRenamedEvent, latestPageTs, renamedIssue, actor, err := p.parseResponse(owner, repo, resp)
+		foundLastAccess, latestPageTs, pairsInPage, err := p.parseResponse(owner, repo, resp)
 
 		if maxPage == 0 && resp.Header.Get("Link") != "" {
 			maxPage = getMaxPage(resp.Header.Get("Link"))
@@ -110,17 +112,11 @@ func (p *Poller) pollRepo(owner, repo string) ([]byte, []byte) {
 
 		if err != nil {
 			log.Printf("Error in parsing response: %v", err)
-			return nil, nil
+			return nil
 		}
 
-		// As we are searching from newest to oldest, whenever hasRenamedEvent is true,
-		// it must be a new renamed event
-		if foundLastAccess || hasRenamedEvent || p.Repos[owner][repo].Timestamp == 0 {
-			if hasRenamedEvent {
-				hasNewRenamedEvent = true
-				newRenamedIssue = renamedIssue
-				eventActor = actor
-			}
+		if foundLastAccess || p.Repos[owner][repo].Timestamp == 0 {
+			pairs = append(pairs, pairsInPage...)
 			break
 		} else {
 			if resp.Body != nil {
@@ -135,48 +131,49 @@ func (p *Poller) pollRepo(owner, repo string) ([]byte, []byte) {
 			req, err = http.NewRequest("GET", fmt.Sprintf("%s/repos/%s/%s/issues/events?page=%d", config.GithubAPIURL, owner, repo, page), nil)
 			if err != nil {
 				log.Printf("Error in creating GET request:%v\n, err")
-				return nil, nil
+				return nil
 			}
 			resp, err = client.Do(req)
 			if err != nil {
 				log.Printf("Error in get issue events:%v\n, err")
-				return nil, nil
+				return nil
 			}
 		}
 	}
 
+	fmt.Printf("#### %v\n", latestTs)
 	a := LastAccess{ETag: etag, Timestamp: latestTs}
 	p.Repos[owner][repo] = a
 	storeLastAccess(owner, repo, a)
 
-	if hasNewRenamedEvent {
+	if len(pairs) > 0 {
 		fmt.Printf("New Renamed Event!!\n")
 	}
 
-	return newRenamedIssue, eventActor
+	return pairs
 }
 
-func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, bool, uint64, []byte, []byte, error) {
+func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, uint64, []webhook.IssueActorPair, error) {
+	var pairs []webhook.IssueActorPair
+
 	content, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return false, false, 0, nil, nil, err
+		return false, 0, nil, err
 	}
 
 	var result []json.RawMessage
 	if err := json.Unmarshal(content, &result); err != nil {
-		return false, false, 0, nil, nil, err
+		return false, 0, nil, err
 	}
 
 	var latestTs uint64
 	lastTs := p.Repos[owner][repo].Timestamp
 	foundLastAccess := false
-	hasRenamedEvent := false
-	var renamedIssue, actor []byte
 
 	for _, v := range result {
 		var event map[string]json.RawMessage
 		if err := json.Unmarshal(v, &event); err != nil {
-			return false, false, 0, nil, nil, err
+			return false, 0, nil, err
 		}
 
 		var tsStr, eventType string
@@ -186,23 +183,23 @@ func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, b
 		ts, _ := time.Parse(time.RFC3339, tsStr)
 		tsUint64 := uint64(ts.Unix())
 
+		if lastTs >= tsUint64 {
+			foundLastAccess = true
+			break
+		}
+		fmt.Printf(">>> created_at:%v/%v event:%v\n", tsUint64, lastTs, eventType)
+
 		if tsUint64 > latestTs {
 			latestTs = tsUint64
 		}
 
 		if eventType == "renamed" {
-			hasRenamedEvent = true
-			renamedIssue = []byte(event["issue"])
-			actor = []byte(event["actor"])
+			pairs = append(pairs, webhook.IssueActorPair{Issue: []byte(event["issue"]), Actor: []byte(event["actor"])})
 		}
 
-		if lastTs > tsUint64 {
-			foundLastAccess = true
-			break
-		}
 	}
 
-	return foundLastAccess, hasRenamedEvent, latestTs, renamedIssue, actor, nil
+	return foundLastAccess, latestTs, pairs, nil
 }
 
 func getMaxPage(link string) int {
@@ -221,8 +218,44 @@ func getMaxPage(link string) int {
 }
 
 func restoreLastAccess(owner, repo string) LastAccess {
-	return LastAccess{"", 0}
+	content, err := ioutil.ReadFile(path.Join(config.DataDir, owner, repo))
+	if err != nil {
+		return LastAccess{"", 0}
+	}
+
+	buf := bytes.NewBuffer(content)
+	etag, err := buf.ReadString('\n')
+	if err != nil {
+		return LastAccess{"", 0}
+	}
+	etag = strings.Trim(etag, "\n ")
+
+	tsStr, err := buf.ReadString('\n')
+	if err != nil {
+		return LastAccess{"", 0}
+	}
+	tsStr = strings.Trim(tsStr, "\n ")
+	ts, err := strconv.ParseUint(tsStr, 10, 64)
+	if err != nil {
+		return LastAccess{"", 0}
+	}
+
+	return LastAccess{etag, ts}
 }
 
 func storeLastAccess(owner, repo string, a LastAccess) {
+	errFmt := "Error in storing last access infomation: %v\n"
+
+	err := os.MkdirAll(path.Join(config.DataDir, owner), 0755)
+	if err != nil {
+		log.Printf(errFmt, err)
+		return
+	}
+
+	content := fmt.Sprintf("%v\n%v\n", a.ETag, a.Timestamp)
+
+	err = ioutil.WriteFile(path.Join(config.DataDir, owner, repo), []byte(content), 0644)
+	if err != nil {
+		log.Printf(errFmt, err)
+	}
 }

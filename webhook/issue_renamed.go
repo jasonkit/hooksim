@@ -12,6 +12,11 @@ import (
 	"github.com/satori/go.uuid"
 )
 
+type IssueActorPair struct {
+	Issue []byte
+	Actor []byte
+}
+
 var (
 	repoFields = [...]string{"id", "name", "full_name", "owner", "private", "html_url", "description", "fork", "url", "forks_url",
 		"keys_url", "collaborators_url", "teams_url", "hooks_url", "issue_events_url", "events_url", "assignees_url",
@@ -55,36 +60,38 @@ func getRepoContent(owner, repo string, client *http.Client) string {
 	return output
 }
 
-func TriggerIssueRenamedWebHook(owner, repo string, renamedIssue, actor []byte, queryClient *http.Client) {
+func TriggerIssueRenamedWebHook(owner, repo string, renamedIssues []IssueActorPair, queryClient *http.Client) {
 	url := getWebHookURL(owner, repo, "issues")
 	if url == "" {
 		return
 	}
 
-	payload := fmt.Sprintf("{\"action\":\"updated\",\"issue\":%s,\"repository\":%s,\"sender\":%s}",
-		string(renamedIssue),
-		getRepoContent(owner, repo, queryClient),
-		string(actor))
+	for _, renamedIssue := range renamedIssues {
+		payload := fmt.Sprintf("{\"action\":\"updated\",\"issue\":%s,\"repository\":%s,\"sender\":%s}",
+			string(renamedIssue.Issue),
+			getRepoContent(owner, repo, queryClient),
+			string(renamedIssue.Actor))
 
-	client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
-	req, err := http.NewRequest("POST", url, bytes.NewReader([]byte(payload)))
-	if err != nil {
-		log.Printf("Error in creating POST request: %v\n", err)
-	}
+		client := &http.Client{Transport: &http.Transport{DisableCompression: true}}
+		req, err := http.NewRequest("POST", url, bytes.NewReader([]byte(payload)))
+		if err != nil {
+			log.Printf("Error in creating POST request: %v\n", err)
+		}
 
-	req.Header.Add("User-Agent", "hooksim")
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Accept", "*/*")
-	req.Header.Add("X-Github-Event", "issues")
-	req.Header.Add("X-Github-Delivery", uuid.NewV4().String())
-	// TODO X-Hub-Signature
+		req.Header.Add("User-Agent", "hooksim")
+		req.Header.Add("Content-Type", "application/json")
+		req.Header.Add("Accept", "*/*")
+		req.Header.Add("X-Github-Event", "issues")
+		req.Header.Add("X-Github-Delivery", uuid.NewV4().String())
+		// TODO X-Hub-Signature
 
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("Error in making webhook call: %v\n", err)
-	}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("Error in making webhook call: %v\n", err)
+		}
 
-	if resp.Body != nil {
-		resp.Body.Close()
+		if resp.Body != nil {
+			resp.Body.Close()
+		}
 	}
 }

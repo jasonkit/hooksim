@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hooksim/config"
+	"hooksim/webhook"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -58,7 +59,7 @@ func (p *Poller) Run() {
 		for owner, v := range p.Repos {
 			for repo := range v {
 				if renamedIssue, actor := p.pollRepo(owner, repo); renamedIssue != nil {
-					//webhook.TriggerIssueRenamedWebHook(owner, repo, renamedIssue,actor, p.Clients[owner])
+					webhook.TriggerIssueRenamedWebHook(owner, repo, renamedIssue, actor, p.Clients[owner])
 				}
 				time.Sleep(delay)
 			}

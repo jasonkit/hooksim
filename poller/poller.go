@@ -210,13 +210,15 @@ func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, u
 	foundLastAccess := false
 
 	for _, v := range result {
-		var event map[string]interface{}
+		var event map[string]json.RawMessage
 		if err := json.Unmarshal(v, &event); err != nil {
 			return false, 0, nil, err
 		}
 
-		curID := uint64(event["id"].(float64))
-		eventType := event["event"].(string)
+		var curID uint64
+		var eventType string
+		json.Unmarshal(event["id"], &curID)
+		json.Unmarshal(event["event"], &eventType)
 
 		if curID > latestID {
 			latestID = curID
@@ -232,8 +234,6 @@ func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, u
 		}
 
 		if eventType == "renamed" {
-			var event map[string]json.RawMessage
-			json.Unmarshal(v, &event)
 			pairs = append(pairs, types.IssueActorPair{Issue: []byte(event["issue"]), Actor: []byte(event["actor"])})
 		}
 

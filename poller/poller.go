@@ -192,9 +192,7 @@ func (p *Poller) pollRepo(owner, repo string) []types.IssueActorPair {
 // event and return the correspond issue and actor content pair
 // It will also indicated whether it is time to stop query the next page by comparing the event ID
 // with this stored one
-func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, uint64, []types.IssueActorPair, error) {
-	var pairs []types.IssueActorPair
-
+func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (foundLastAccess bool, latestID uint64, pairs []types.IssueActorPair, err error) {
 	content, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return false, 0, nil, err
@@ -205,9 +203,8 @@ func (p *Poller) parseResponse(owner, repo string, resp *http.Response) (bool, u
 		return false, 0, nil, err
 	}
 
-	var latestID uint64
 	lastID := p.Repos[owner][repo].EventID
-	foundLastAccess := false
+	foundLastAccess = false
 
 	for _, v := range result {
 		var event map[string]json.RawMessage

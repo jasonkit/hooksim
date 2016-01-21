@@ -91,6 +91,27 @@ func (p *Poller) Run() {
 
 }
 
+// getIssueEvent makes HTTP GET request to fetch list of Issue Event in the specific page.
+func (p *Poller) getIssueEvent(owner, repo string, page int, useETag bool) (*http.Response, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/repos/%s/%s/issues/events?page=%d", config.GithubAPIURL, owner, repo, page), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if useETag && p.Repos[owner][repo].ETag != "" {
+		req.Header.Add("If-None-Match", p.Repos[owner][repo].ETag)
+	}
+
+	client := p.Clients[owner]
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Error in get issue events:%v\n, err")
+		return nil, err
+	}
+
+	return resp, nil
+}
+
 // pollRepo makes query to /repos/:user/:repo/issues/events, scan for unread issue event
 // if there is unread "renamed" issue event, it will enqueue the correspond issue and actor
 // content pair to a queue, this queue will be output of this method. By exemine the length
@@ -103,21 +124,9 @@ func (p *Poller) pollRepo(owner, repo string) []types.IssueActorPair {
 		fmt.Printf("polling %s/%s...\n", owner, repo)
 	}
 
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/repos/%s/%s/issues/events", config.GithubAPIURL, owner, repo), nil)
+	resp, err := p.getIssueEvent(owner, repo, 1, true)
 	if err != nil {
-		log.Printf("Error in creating GET request:%v\n, err")
-		return nil
-	}
-
-	if p.Repos[owner][repo].ETag != "" {
-		req.Header.Add("If-None-Match", p.Repos[owner][repo].ETag)
-	}
-
-	client := p.Clients[owner]
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Printf("Error in get issue events:%v\n, err")
-		return nil
+		log.Printf("Error in getting issue event: %v\n", err)
 	}
 
 	if resp.StatusCode == 304 {
@@ -162,16 +171,7 @@ func (p *Poller) pollRepo(owner, repo string) []types.IssueActorPair {
 				break
 			}
 
-			req, err = http.NewRequest("GET", fmt.Sprintf("%s/repos/%s/%s/issues/events?page=%d", config.GithubAPIURL, owner, repo, page), nil)
-			if err != nil {
-				log.Printf("Error in creating GET request:%v\n, err")
-				return nil
-			}
-			resp, err = client.Do(req)
-			if err != nil {
-				log.Printf("Error in get issue events:%v\n, err")
-				return nil
-			}
+			resp, err = p.getIssueEvent(owner, repo, page, false)
 		}
 	}
 
